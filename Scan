@@ -147,7 +147,7 @@ def advanced_scan(target):
         else:
             print(f"{PURPLE}No vulnerabilities or sensitive files were found.{ENDC}")
             
-        print(f"\n{PURPLE}credits : swag/asdqq{ENDC}")
+        print(f"\n{PURPLE}credits : swag/asdq{ENDC}")
     except Exception as e:
         print(f"{PURPLE}[!] Error: Could not connect to target. {e}{ENDC}")
 
