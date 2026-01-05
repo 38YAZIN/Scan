@@ -1,0 +1,136 @@
+import requests
+import re
+import concurrent.futures
+import random
+from urllib.parse import urljoin, urlparse
+import time
+
+# إعدادات متقدمة للتخفي وتجاوز الحماية
+BYPASS_HEADERS = [
+    {'X-Forwarded-For': '127.0.0.1'},
+    {'X-Originating-IP': '127.0.0.1'},
+    {'X-Remote-IP': '127.0.0.1'},
+    {'X-Client-IP': '127.0.0.1'},
+    {'X-Forwarded-Host': 'localhost'}
+]
+
+SENSITIVE_REGEX = {
+    "Google API Key": r"AIza[0-9A-Za-z-_]{35}",
+    "Firebase URL": r"https://.*\.firebaseio\.com",
+    "Generic Secret": r"(?i)secret|password|api_key|token|access_key",
+    "Email Leak": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
+}
+
+EXTENSIONS = ['', '.php', '.py', '.html', '.js', '.txt', '.env', '.bak', '.old', '.json', '.zip']
+COMMON_PATHS = [
+    'admin', 'login', 'config', 'db', 'api', 'v1', 'v2', 'backup', 'shell', 
+    'upload', 'download', 'setup', 'manage', 'dashboard', 'private', 'secret', '.git/config'
+]
+
+def auto_bypass_403(url):
+    """محاولة كسر حجب 403 Forbidden بأساليب التلاعب بالرؤوس والروابط"""
+    print(f"    [→] Attempting Bypass on Forbidden path...")
+    
+    # 1. التلاعب بالرؤوس (Header Manipulation)
+    for b_header in BYPASS_HEADERS:
+        try:
+            r = requests.get(url, headers=b_header, timeout=3)
+            if r.status_code == 200:
+                print(f"    [SUCCESS] Bypass with Header: {b_header}")
+                return True
+        except: pass
+
+    # 2. التلاعب بالمسار (Path Traversal/Bypass)
+    bypass_suffixes = ["/%2e/", "/.", "??", "/", "..;/"]
+    for suffix in bypass_suffixes:
+        try:
+            r = requests.get(url + suffix, timeout=3)
+            if r.status_code == 200:
+                print(f"    [SUCCESS] Bypass with Suffix: {suffix}")
+                return True
+        except: pass
+    return False
+
+def deep_file_analyzer(url, content):
+    """تحليل عميق لمحتوى الملفات المكتشفة لاستخراج بيانات حساسة"""
+    found_secrets = []
+    for name, pattern in SENSITIVE_REGEX.items():
+        matches = re.findall(pattern, content)
+        if matches:
+            found_secrets.append(f"{name} ({len(matches)} found)")
+    
+    if found_secrets:
+        print(f"    [ANALYSIS] {url} contains: {', '.join(found_secrets)}")
+
+def path_bruteforce(target):
+    print(f"\n[!] Starting Path & Extension Discovery + Auto-Bypass...")
+    scan_list = [f"{path}{ext}" for path in COMMON_PATHS for ext in EXTENSIONS]
+    
+    def check_url(p):
+        full_url = urljoin(target, p)
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'}
+            r = requests.get(full_url, headers=headers, timeout=3, allow_redirects=False)
+            
+            if r.status_code == 200:
+                print(f"  [FOUND] {full_url}")
+                deep_file_analyzer(full_url, r.text) # تحليل الملف فوراً
+            elif r.status_code == 403:
+                print(f"  [FORBIDDEN] {full_url}")
+                auto_bypass_403(full_url) # محاولة الكسر التلقائي
+        except: pass
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        executor.map(check_url, scan_list)
+
+# --- بقية الدوال الخاصة بك مع الحفاظ عليها ---
+
+def bypass_ip_headers(url):
+    print(f"\n[!] Testing IP Spoofing/Bypass on Main Entry...")
+    for ip in ["127.0.0.1", "localhost"]:
+        headers = {'X-Forwarded-For': ip, 'X-Real-IP': ip}
+        try:
+            r = requests.get(url, headers=headers, timeout=5)
+            if r.status_code == 200 and "forbidden" not in r.text.lower():
+                print(f"  [POTENTIAL] IP Bypass successful with: {ip}")
+        except: pass
+
+def js_leak_finder(url, html_content):
+    print(f"\n[!] Scraping JS files for secrets...")
+    js_files = re.findall(r'src="([^"]+\.js)"', html_content)
+    for js in js_files:
+        full_url = urljoin(url, js)
+        try:
+            js_res = requests.get(full_url, timeout=5).text
+            deep_file_analyzer(full_url, js_res)
+        except: pass
+
+def test_methods(url):
+    print(f"\n[!] Testing HTTP Methods...")
+    for m in ['PUT', 'DELETE', 'OPTIONS']:
+        try:
+            r = requests.request(m, url, timeout=5)
+            if r.status_code in [200, 201]:
+                print(f"  [DANGER] Server allows {m} method!")
+        except: pass
+
+def advanced_scan(target):
+    print("--- ☢️ ELITE CYBER EXPLOIT SCANNER (ADVANCED) ☢️ ---")
+    if not target.startswith('http'): target = 'http://' + target
+    if not target.endswith('/'): target += '/'
+    
+    try:
+        r = requests.get(target, timeout=10)
+        
+        path_bruteforce(target)
+        bypass_ip_headers(target)
+        js_leak_finder(target, r.text)
+        test_methods(target)
+        
+        print("\n[✔] Full Offensive Security Audit finished.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+if __name__ == "__main__":
+    target = input("Target URL: ").strip()
+    advanced_scan(target)
