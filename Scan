@@ -3,124 +3,154 @@ import re
 import concurrent.futures
 import random
 from urllib.parse import urljoin, urlparse
-import time
+import urllib3
 
-BYPASS_HEADERS = [
-    {'X-Forwarded-For': '127.0.0.1'},
-    {'X-Originating-IP': '127.0.0.1'},
-    {'X-Remote-IP': '127.0.0.1'},
-    {'X-Client-IP': '127.0.0.1'},
-    {'X-Forwarded-Host': 'localhost'}
-]
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+PURPLE = '\033[95m'
+ENDC = '\033[0m'
+BOLD = '\033[1m'
+
+ASCII_ART = f"""{PURPLE}
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⡴⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣴⣿⠟⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣶⣿⣿⣿⡅⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⣀⣀⣀⣀⣀⣀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣤⣤⣤⣤⣴⣿⣿⣿⣿⣯⣤⣶⣶⣾⣿⣶⣶⣿⣿⣿⣿⣿⡿⠿⠟⠛⠉⠉⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠐⠉⠁⠈⣹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣶⣶⠶⠶⠦⠄⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣾⡿⠟⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣦⡀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣾⣿⣟⣡⣤⣾⣿⣿⣿⣿⣿⣿⢏⠉⠛⣿⣿⣿⣿⣿⣿⣿⣿⣿⡻⢿⣿⣿⣦⡀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⣀⣤⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠃⠈⠻⡄⠁⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣆⠈⠙⠻⣿⣆⠀⠀⠀⠀
+⠀⠀⠀⠀⢰⣿⣿⣿⣿⡿⠛⠉⠉⠉⠛⠛⠛⠛⠋⠁⠀⠀⠀⠁⠀⣠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⠀⠀⠈⠙⢧⠀⠀⠀
+⠀⠀⠀⠀⠀⠙⠿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣤⣴⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡆⠀⠀⠀⠀⠁⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠙⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⢀⣤⣴⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠁⠀⠀⢹⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⢀⣤⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠋⠁⠀⠀⠀⠀⠈⣿⣿⡟⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠟⠛⢋⣩⡿⠿⠿⠟⠛⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⡟⠁⠀⠀⠀⠀⠀⠀⠀
+⠀⢀⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⣄⣀⡀⠀⠀⠀⠀⠀⠐⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⣾⣿⣿⣿⣿⣿⣿⣿⠻⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠻⢿⣶⣤⣄⡀⠀⠀⠀⠀⠀⠀⠀
+⢰⣿⣿⣿⣿⣿⣿⣿⣿⡄⠙⢿⣄⠀⠀⠀⠀⠀⠀⠀⠀⠠⣤⣀⠀⠀⠀⠠⣄⣀⣀⡉⢻⣿⣿⣿⣶⣄⡀⠀⠀⠀⠀⠀⠀⠀
+⠘⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⣄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⣿⣦⣤⣤⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄⡀⠀⠀⠀⠀
+⠀⢻⡟⠙⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠛⠛⠋⠉⠀⠀⢀⣠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⡀⠀⠀
+⠀⠀⠃⠀⢹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣶⣶⣶⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡟⠁⠀⠀⠀⠀⠀⠈⠉⠻⢿⣿⣿⣿⣷⡄⠀
+⠀⠀⠀⠀⢸⣿⣿⡟⠙⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠿⠛⠛⣿⣿⣿⣿⣿⣧⣀⣀⡄⠀⠀⠀⠀⠀⠀⠈⣿⡿⣿⣿⣷⠀
+⠀⠀⠀⠀⢸⣿⡿⠁⠀⠀⠀⠙⠻⠿⣟⠻⢿⣿⣿⣿⣷⣦⡀⠀⠈⠻⢿⣿⣿⣭⣉⡉⠀⠀⠀⠀⠀⠀⠀⠀⠘⠀⠸⣿⣿⡄
+⠀⠀⠀⠀⣸⡟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⢿⣿⣿⣦⡀⠀⠀⠀⠉⠉⠉⠉⠉⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⠁
+⠀⠀⠀⠠⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⢿⣿⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⡟⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⠟⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠁⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠰⡴⡖⡴⡖⡴⡄⢰⣀⣶⣰⡂⣶⢰⡆⣶⢰⣆⣰⣀⣆⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+{ENDC}"""
 
 SENSITIVE_REGEX = {
     "Google API Key": r"AIza[0-9A-Za-z-_]{35}",
-    "Firebase URL": r"https://.*\.firebaseio\.com",
-    "Generic Secret": r"(?i)secret|password|api_key|token|access_key",
+    "Generic Secret": r"(?i)secret|password|api_key|token",
     "Email Leak": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
 }
 
-EXTENSIONS = ['', '.php', '.py', '.html', '.js', '.txt', '.env', '.bak', '.old', '.json', '.zip']
-COMMON_PATHS = [
-    'admin', 'login', 'config', 'db', 'api', 'v1', 'v2', 'backup', 'shell', 
-    'upload', 'download', 'setup', 'manage', 'dashboard', 'private', 'secret', '.git/config'
-]
-
-def auto_bypass_403(url):
-    print(f"    [→] Attempting Bypass on Forbidden path...")
-    for b_header in BYPASS_HEADERS:
-        try:
-            r = requests.get(url, headers=b_header, timeout=3)
-            if r.status_code == 200:
-                print(f"    [SUCCESS] Bypass with Header: {b_header}")
-                return True
-        except: pass
-
-    bypass_suffixes = ["/%2e/", "/.", "??", "/", "..;/"]
-    for suffix in bypass_suffixes:
-        try:
-            r = requests.get(url + suffix, timeout=3)
-            if r.status_code == 200:
-                print(f"    [SUCCESS] Bypass with Suffix: {suffix}")
-                return True
-        except: pass
-    return False
+EXTENSIONS = ['', '.php', '.json', '.env', '.bak']
+COMMON_PATHS = ['admin', 'login', 'config', 'db', 'api/v1', 'api/v2', '.env', 'backup']
+FOUND_ITEMS = []
 
 def deep_file_analyzer(url, content):
-    found_secrets = []
+    findings = []
     for name, pattern in SENSITIVE_REGEX.items():
-        matches = re.findall(pattern, content)
-        if matches:
-            found_secrets.append(f"{name} ({len(matches)} found)")
+        if re.search(pattern, content):
+            findings.append(name)
+    return findings
+
+def sqli_scanner(target):
+    print(f"{PURPLE}[*] Stage 3: Launching SQLi Scanner...{ENDC}")
+    payloads = ["'", "' OR '1'='1"]
+    sql_errors = ["sql syntax", "mysql_fetch", "ora-01756", "error in your sql syntax"]
+    test_url = target if '?' in target else f"{target}?id=1"
     
-    if found_secrets:
-        print(f"    [ANALYSIS] {url} contains: {', '.join(found_secrets)}")
+    for payload in payloads:
+        full_test_url = test_url.split('=')[0] + "=" + payload
+        try:
+            r = requests.get(full_test_url, timeout=5, verify=False)
+            if any(error in r.text.lower() for error in sql_errors):
+                msg = f"[SQLi VULNERABLE] {full_test_url}"
+                print(f"{PURPLE}  [!] CRITICAL: {msg}{ENDC}")
+                FOUND_ITEMS.append(msg)
+            else:
+                print(f"{PURPLE}  [-] Testing payload: {payload} (No SQL Error){ENDC}")
+        except Exception as e:
+            print(f"{PURPLE}  [!] Error testing SQLi: {e}{ENDC}")
 
 def path_bruteforce(target):
-    print(f"\n[!] Starting Path & Extension Discovery + Auto-Bypass...")
+    print(f"{PURPLE}[*] Stage 2: Deep Path Fuzzing...{ENDC}")
     scan_list = [f"{path}{ext}" for path in COMMON_PATHS for ext in EXTENSIONS]
     
     def check_url(p):
         full_url = urljoin(target, p)
         try:
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'}
-            r = requests.get(full_url, headers=headers, timeout=3, allow_redirects=False)
+            r = requests.get(full_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5, verify=False, allow_redirects=False)
             if r.status_code == 200:
-                print(f"  [FOUND] {full_url}")
-                deep_file_analyzer(full_url, r.text)
+                analysis = deep_file_analyzer(full_url, r.text)
+                res = f"[FOUND] {full_url} (Analysis: {analysis if analysis else 'Clean'})"
+                print(f"{PURPLE}  [+] {res}{ENDC}")
+                FOUND_ITEMS.append(res)
             elif r.status_code == 403:
-                print(f"  [FORBIDDEN] {full_url}")
-                auto_bypass_403(full_url)
-        except: pass
+                print(f"{PURPLE}  [!] Forbidden (403): {full_url}{ENDC}")
+        except:
+            pass
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         executor.map(check_url, scan_list)
 
-def bypass_ip_headers(url):
-    print(f"\n[!] Testing IP Spoofing/Bypass on Main Entry...")
-    for ip in ["127.0.0.1", "localhost"]:
-        headers = {'X-Forwarded-For': ip, 'X-Real-IP': ip}
-        try:
-            r = requests.get(url, headers=headers, timeout=5)
-            if r.status_code == 200 and "forbidden" not in r.text.lower():
-                print(f"  [POTENTIAL] IP Bypass successful with: {ip}")
-        except: pass
-
-def js_leak_finder(url, html_content):
-    print(f"\n[!] Scraping JS files for secrets...")
+def js_scraper(target, html_content):
+    print(f"{PURPLE}[*] Stage 1: Deep JS Scraping...{ENDC}")
     js_files = re.findall(r'src="([^"]+\.js)"', html_content)
-    for js in js_files:
-        full_url = urljoin(url, js)
-        try:
-            js_res = requests.get(full_url, timeout=5).text
-            deep_file_analyzer(full_url, js_res)
-        except: pass
+    if not js_files:
+        print(f"{PURPLE}  [-] No external JS files found.{ENDC}")
+        return
 
-def test_methods(url):
-    print(f"\n[!] Testing HTTP Methods...")
-    for m in ['PUT', 'DELETE', 'OPTIONS']:
+    for js in js_files:
+        full_url = urljoin(target, js)
         try:
-            r = requests.request(m, url, timeout=5)
-            if r.status_code in [200, 201]:
-                print(f"  [DANGER] Server allows {m} method!")
-        except: pass
+            print(f"{PURPLE}  [~] Scraping: {full_url}{ENDC}")
+            res = requests.get(full_url, timeout=5, verify=False)
+            analysis = deep_file_analyzer(full_url, res.text)
+            if analysis:
+                msg = f"[JS LEAK] {full_url} | Secrets: {analysis}"
+                print(f"{PURPLE}  [+] {msg}{ENDC}")
+                FOUND_ITEMS.append(msg)
+        except:
+            pass
 
 def advanced_scan(target):
-    print("--- WEB SCANNER ---")
-    if not target.startswith('http'): target = 'http://' + target
-    if not target.endswith('/'): target += '/'
+    print(ASCII_ART)
+    print(f"{PURPLE}{BOLD}--- WEB SCANNER STARTING ---{ENDC}")
     
+    if not target.startswith('http'):
+        target = 'http://' + target
+    if not target.endswith('/'):
+        target += '/'
+        
     try:
-        r = requests.get(target, timeout=10)
+        print(f"{PURPLE}[*] Connecting to: {target}{ENDC}")
+        main_res = requests.get(target, timeout=10, verify=False)
+        print(f"{PURPLE}[*] Connection Successful (Status: {main_res.status_code}){ENDC}")
+        
+        js_scraper(target, main_res.text)
         path_bruteforce(target)
-        bypass_ip_headers(target)
-        js_leak_finder(target, r.text)
-        test_methods(target)
-        print("\n[✔] Full security audit finished.")
-        print("\ncredits : swag/asdqq")
+        sqli_scanner(target)
+        
+        print(f"\n{PURPLE}{BOLD}" + "="*60)
+        print("SCAN FINISHED - SUMMARY OF FINDINGS")
+        print("="*60 + f"{ENDC}")
+        
+        if FOUND_ITEMS:
+            for item in FOUND_ITEMS:
+                print(f"{PURPLE}{item}{ENDC}")
+        else:
+            print(f"{PURPLE}No vulnerabilities or sensitive files were found.{ENDC}")
+            
+        print(f"\n{PURPLE}credits : swag/asdqq{ENDC}")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"{PURPLE}[!] Error: Could not connect to target. {e}{ENDC}")
 
 if __name__ == "__main__":
-    target = input("Target URL: ").strip()
+    target = input(f"{PURPLE}Target URL (e.g. google.com): {ENDC}").strip()
     advanced_scan(target)
