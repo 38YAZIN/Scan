@@ -5,7 +5,6 @@ import random
 from urllib.parse import urljoin, urlparse
 import time
 
-# إعدادات متقدمة للتخفي وتجاوز الحماية
 BYPASS_HEADERS = [
     {'X-Forwarded-For': '127.0.0.1'},
     {'X-Originating-IP': '127.0.0.1'},
@@ -28,10 +27,7 @@ COMMON_PATHS = [
 ]
 
 def auto_bypass_403(url):
-    """محاولة كسر حجب 403 Forbidden بأساليب التلاعب بالرؤوس والروابط"""
     print(f"    [→] Attempting Bypass on Forbidden path...")
-    
-    # 1. التلاعب بالرؤوس (Header Manipulation)
     for b_header in BYPASS_HEADERS:
         try:
             r = requests.get(url, headers=b_header, timeout=3)
@@ -40,7 +36,6 @@ def auto_bypass_403(url):
                 return True
         except: pass
 
-    # 2. التلاعب بالمسار (Path Traversal/Bypass)
     bypass_suffixes = ["/%2e/", "/.", "??", "/", "..;/"]
     for suffix in bypass_suffixes:
         try:
@@ -52,7 +47,6 @@ def auto_bypass_403(url):
     return False
 
 def deep_file_analyzer(url, content):
-    """تحليل عميق لمحتوى الملفات المكتشفة لاستخراج بيانات حساسة"""
     found_secrets = []
     for name, pattern in SENSITIVE_REGEX.items():
         matches = re.findall(pattern, content)
@@ -71,19 +65,16 @@ def path_bruteforce(target):
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'}
             r = requests.get(full_url, headers=headers, timeout=3, allow_redirects=False)
-            
             if r.status_code == 200:
                 print(f"  [FOUND] {full_url}")
-                deep_file_analyzer(full_url, r.text) # تحليل الملف فوراً
+                deep_file_analyzer(full_url, r.text)
             elif r.status_code == 403:
                 print(f"  [FORBIDDEN] {full_url}")
-                auto_bypass_403(full_url) # محاولة الكسر التلقائي
+                auto_bypass_403(full_url)
         except: pass
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         executor.map(check_url, scan_list)
-
-# --- بقية الدوال الخاصة بك مع الحفاظ عليها ---
 
 def bypass_ip_headers(url):
     print(f"\n[!] Testing IP Spoofing/Bypass on Main Entry...")
@@ -115,19 +106,18 @@ def test_methods(url):
         except: pass
 
 def advanced_scan(target):
-    print("--- ☢️ ELITE CYBER EXPLOIT SCANNER (ADVANCED) ☢️ ---")
+    print("--- WEB SCANNER ---")
     if not target.startswith('http'): target = 'http://' + target
     if not target.endswith('/'): target += '/'
     
     try:
         r = requests.get(target, timeout=10)
-        
         path_bruteforce(target)
         bypass_ip_headers(target)
         js_leak_finder(target, r.text)
         test_methods(target)
-        
-        print("\n[✔] Full Offensive Security Audit finished.")
+        print("\n[✔] Full security audit finished.")
+        print("\ncredits : swag/asdqq")
     except Exception as e:
         print(f"Error: {e}")
 
